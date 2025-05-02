@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Real Estate Investment Calculator</title>
+  <style>
+    body { font-family: Arial; background: #f4f4f4; padding: 20px; }
+    .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    input, button { padding: 10px; margin: 10px 0; width: 100%; font-size: 16px; }
+    button { background-color: #28a745; color: white; border: none; cursor: pointer; }
+    button:hover { background-color: #218838; }
+    .results, .search-results { margin-top: 20px; background: #e9ecef; padding: 15px; border-radius: 5px; }
+    label { font-weight: bold; display: block; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <div style="text-align: center; font-size: 14px; margin-bottom: 10px; color: #555;">
+    © 2025 Juan Jose Arroyo-Lopez — jjalenterprisesinc@gmail.com
+  </div>
+
+  <div class="container">
+    <h1>Investment Property Calculator</h1>
+    <form id="propertyForm">
+      <label for="address">Property Address:</label>
+      <input type="text" id="address" required placeholder="e.g. 7103 State Rd, Philadelphia" />
+
+      <label for="renovationCost">Renovation Cost ($):</label>
+      <input type="number" id="renovationCost" required placeholder="e.g. 40000" />
+
+      <label for="profitMargin">Desired Profit Margin (%):</label>
+      <input type="number" id="profitMargin" required value="20" placeholder="e.g. 20 for 20%" />
+
+      <label>
+        <input type="checkbox" id="manualToggle" /> Enter market value manually
+      </label>
+
+      <div id="manualInputWrapper" style="display:none;">
+        <label for="manualMarketValue">Manual Market Value ($):</label>
+        <input type="number" id="manualMarketValue" placeholder="e.g. 250000" />
+      </div>
+
+      <button type="submit">Search & Calculate</button>
+    </form>
+
+    <div class="results" id="calcResults" style="display: none;">
+      <p><strong>Detected Market Values:</strong> <span id="priceList"></span></p>
+      <p><strong>Average Market Value:</strong> $<span id="avgValue">0</span></p>
+      <p><strong>Renovation Cost:</strong> $<span id="renoCost">0</span></p>
+      <p><strong>Desired Profit (amount):</strong> $<span id="profitAmount">0</span></p>
+      <p><strong>Max Purchase Price (Investment):</strong> $<span id="maxPrice" style="color: red;">0</span></p>
+    </div>
+
+    <div class="search-results" id="searchResults" style="display: none;">
+      <h2>Search Results</h2>
+      <div id="linksContainer"></div>
+    </div>
+  </div>
+
+  <script>
+    const apiKey = 'AIzaSyB4YMsUix_OY6gEmNm2VstYTF58fzCYoJs'; // 🔁 Replace with your API key
+    const cx = '05fb02289b1b64e47';      // 🔁 Replace with your Custom Search Engine ID
+
+    document.getElementById('manualToggle').addEventListener('change', function () {
+      document.getElementById('manualInputWrapper').style.display = this.checked ? 'block' : 'none';
+    });
+
+    function extractPrice(snippet) {
+      const match = snippet.match(/\$\d{1,3}(,\d{3})*(\.\d{2})?/);
+      if (match) {
+        return parseFloat(match[0].replace(/\$|,/g, ''));
+      }
+      return null;
+    }
+
+    document.getElementById('propertyForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      const address = document.getElementById('address').value;
+      const renovationCost = parseFloat(document.getElementById('renovationCost').value);
+      const profitMargin = parseFloat(document.getElementById('profitMargin').value) / 100;
+      const manualEnabled = document.getElementById('manualToggle').checked;
+      const manualValue = parseFloat(document.getElementById('manualMarketValue').value);
+
+      fetch(`https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(address)}&key=${apiKey}&cx=${cx}`)
+        .then(res => res.json())
+        .then(data => {
+          const linksContainer = document.getElementById('linksContainer');
+          const priceListSpan = document.getElementById('priceList');
+          linksContainer.innerHTML = '';
+          document.getElementById('searchResults').style.display = 'block';
+
+          let prices = [];
+
+          if (data.items && data.items.length > 0) {
+            data.items.forEach(item => {
+              const price = extractPrice(item.snippet);
+              if (price) prices.push(price);
+
+              const div = document.createElement('div');
+              div.innerHTML = `<h3><a href="${item.link}" target="_blank">${item.title}</a></h3><p>${item.snippet}</p>`;
+              linksContainer.appendChild(div);
+            });
+          }
+
+          if (manualEnabled && !isNaN(manualValue)) {
+            prices = []; // ignore auto prices
+          }
+
+          if (prices.length > 0 || (manualEnabled && !isNaN(manualValue))) {
+            const avg = manualEnabled ? manualValue : prices.reduce((a, b) => a + b, 0) / prices.length;
+            const profitAmount = avg * profitMargin;
+            const maxBuyPrice = avg - renovationCost - profitAmount;
+
+            priceListSpan.textContent = manualEnabled ? 'Manual entry used' : prices.map(p => `$${p.toLocaleString()}`).join(", ");
+            document.getElementById('avgValue').textContent = avg.toLocaleString(undefined, { maximumFractionDigits: 0 });
+            document.getElementById('renoCost').textContent = renovationCost.toLocaleString(undefined, { maximumFractionDigits: 0 });
+            document.getElementById('profitAmount').textContent = profitAmount.toLocaleString(undefined, { maximumFractionDigits: 0 });
+            document.getElementById('maxPrice').textContent = maxBuyPrice.toLocaleString(undefined, { maximumFractionDigits: 0 });
+            document.getElementById('calcResults').style.display = 'block';
+          } else {
+            priceListSpan.textContent = 'No prices detected from snippets.';
+            document.getElementById('calcResults').style.display = 'none';
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching data:', error);
+        });
+    });
+  </script>
+</body>
+</html>
